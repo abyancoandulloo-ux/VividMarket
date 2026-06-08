@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Manager | VividMart</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: system-ui, 'Segoe UI', 'Inter', sans-serif;
+      background: #fef7f0;
+      padding: 2rem;
+      color: #1e2a3e;
+    }
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #ff6b4a, #3bc9b0);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+    .card {
+      background: white;
+      border-radius: 28px;
+      padding: 1.5rem;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+      margin-bottom: 2rem;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 0.7rem 1rem;
+      border: 1px solid #ffe0d0;
+      border-radius: 60px;
+      font-family: inherit;
+      background: white;
+    }
+    button {
+      background: #ff6b4a;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 60px;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    button:hover {
+      transform: scale(0.97);
+      background: #e55a3b;
+    }
+    .btn-secondary {
+      background: #3bc9b0;
+    }
+    .btn-danger {
+      background: #dc2626;
+    }
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+    .product-item {
+      background: white;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+      transition: 0.2s;
+    }
+    .product-item img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+    }
+    .product-details {
+      padding: 1rem;
+    }
+    .product-name {
+      font-weight: 800;
+      font-size: 1.1rem;
+    }
+    .product-price {
+      color: #ff6b4a;
+      font-weight: 700;
+    }
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.8rem;
+    }
+    .actions button {
+      flex: 1;
+      padding: 0.4rem;
+      font-size: 0.8rem;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2f3c;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 60px;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📦 Product Manager</h1>
+
+  <!-- Add / Edit Form -->
+  <div class="card">
+    <h3 id="formTitle">➕ Add New Product</h3>
+    <input type="hidden" id="productId">
+    <div class="form-group">
+      <label>Product Name</label>
+      <input type="text" id="name" placeholder="e.g., Aurora Headphones">
+    </div>
+    <div class="form-group">
+      <label>Price ($)</label>
+      <input type="number" step="0.01" id="price" placeholder="49.99">
+    </div>
+    <div class="form-group">
+      <label>Rating (0–5)</label>
+      <input type="number" step="0.1" min="0" max="5" id="rating" placeholder="4.5">
+    </div>
+    <div class="form-group">
+      <label>Product Image</label>
+      <input type="file" id="imageFile" accept="image/*">
+      <small style="color:gray">Upload new image (optional when editing)</small>
+    </div>
+    <div style="display: flex; gap: 1rem;">
+      <button id="saveBtn">💾 Save Product</button>
+      <button id="cancelBtn" class="btn-secondary" style="display: none;">Cancel Edit</button>
+    </div>
+  </div>
+
+  <!-- Product List -->
+  <div class="card">
+    <h3>📋 All Products</h3>
+    <div id="productsList" class="products-grid">Loading...</div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    // Supabase config
+    const SUPABASE_URL = 'https://zjfqatxxksjwxfptxouq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZnFhdHh4a3Nqd3hmcHR4b3VxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MDY4OTAsImV4cCI6MjA5NjQ4Mjg5MH0.RNuMP2XDBi1N3fz2NiEKgtf-ngC-52OHAiBH9B8umpU';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let editingId = null;
+    let currentImageUrl = null;
+
+    function showToast(msg) {
+      let toast = document.querySelector('.toast');
+      if (toast) toast.remove();
+      toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerText = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
+    }
+
+    async function uploadImage(file) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const { data, error } = await supabase.storage.from('products').upload(fileName, file);
+      if (error) throw error;
+      const { data: publicUrlData } = supabase.storage.from('products').getPublicUrl(fileName);
+      return publicUrlData.publicUrl;
+    }
+
+    async function fetchProducts() {
+      const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+      if (error) {
+        console.error(error);
+        showToast('Failed to load products');
+        return [];
+      }
+      renderProducts(data);
+      return data;
+    }
+
+    function renderProducts(products) {
+      const container = document.getElementById('productsList');
+      if (!products.length) {
+        container.innerHTML = '<div style="grid-column:1/-1; text-align:center;">No products yet. Add your first one!</div>';
+        return;
+      }
+      container.innerHTML = products.map(prod => `
+        <div class="product-item" data-id="${prod.id}">
+          <img src="${prod.image_url}" alt="${prod.name}" onerror="this.src='https://placehold.co/400x300?text=No+Image'">
+          <div class="product-details">
+            <div class="product-name">${escapeHtml(prod.name)}</div>
+            <div class="product-price">$${Number(prod.price).toFixed(2)}</div>
+            <div>⭐ ${prod.rating} / 5</div>
+            <div class="actions">
+              <button class="edit-btn" data-id="${prod.id}">✏️ Edit</button>
+              <button class="delete-btn" data-id="${prod.id}">🗑️ Delete</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = btn.getAttribute('data-id');
+          await loadProductForEdit(id);
+        });
+      });
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = btn.getAttribute('data-id');
+          if (confirm('Delete this product permanently?')) {
+            await deleteProduct(id);
+          }
+        });
+      });
+    }
+
+    async function loadProductForEdit(id) {
+      const { data, error } = await supabase.from('products').select('*').eq('id', id).single();
+      if (error) {
+        showToast('Error loading product');
+        return;
+      }
+      editingId = data.id;
+      document.getElementById('productId').value = data.id;
+      document.getElementById('name').value = data.name;
+      document.getElementById('price').value = data.price;
+      document.getElementById('rating').value = data.rating;
+      document.getElementById('formTitle').innerText = '✏️ Edit Product';
+      document.getElementById('cancelBtn').style.display = 'inline-block';
+      currentImageUrl = data.image_url;
+    }
+
+    async function deleteProduct(id) {
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) {
+        showToast('Delete failed: ' + error.message);
+      } else {
+        showToast('Product deleted');
+        fetchProducts();
+        if (editingId === id) resetForm();
+      }
+    }
+
+    async function saveProduct() {
+      const name = document.getElementById('name').value.trim();
+      const price = parseFloat(document.getElementById('price').value);
+      const rating = parseFloat(document.getElementById('rating').value);
+      const imageFile = document.getElementById('imageFile').files[0];
+
+      if (!name || isNaN(price) || isNaN(rating)) {
+        showToast('Please fill name, price and rating correctly.');
+        return;
+      }
+
+      let imageUrl = editingId ? currentImageUrl : null;
+      
+      if (imageFile) {
+        try {
+          imageUrl = await uploadImage(imageFile);
+        } catch (err) {
+          showToast('Image upload failed: ' + err.message);
+          return;
+        }
+      } else if (!imageUrl && !editingId) {
+        showToast('Please select an image for new product.');
+        return;
+      }
+
+      const productData = { name, price, rating, image_url: imageUrl };
+
+      if (editingId) {
+        const { error } = await supabase.from('products').update(productData).eq('id', editingId);
+        if (error) {
+          showToast('Update failed: ' + error.message);
+        } else {
+          showToast('Product updated!');
+          resetForm();
+          fetchProducts();
+        }
+      } else {
+        const { error } = await supabase.from('products').insert([productData]);
+        if (error) {
+          showToast('Insert failed: ' + error.message);
+        } else {
+          showToast('Product added!');
+          resetForm();
+          fetchProducts();
+        }
+      }
+    }
+
+    function resetForm() {
+      editingId = null;
+      document.getElementById('productId').value = '';
+      document.getElementById('name').value = '';
+      document.getElementById('price').value = '';
+      document.getElementById('rating').value = '';
+      document.getElementById('imageFile').value = '';
+      document.getElementById('formTitle').innerText = '➕ Add New Product';
+      document.getElementById('cancelBtn').style.display = 'none';
+      currentImageUrl = null;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+      });
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', saveProduct);
+    document.getElementById('cancelBtn').addEventListener('click', resetForm);
+
+    fetchProducts();
+  })();
+</script>
+</body>
+</html>
